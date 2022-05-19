@@ -1,0 +1,408 @@
+---
+title: 'NBM 2 TASK 2: LOGISTIC REGRESSION FOR PREDICTIVE MODELLING'
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+##Part I: Research Question
+The purpose of this analysis is to apply logistic regression in modelling  determinants of customer churn and prediction of the customer churn variable.
+Customer churn, also known as customer turnover, occurs when consumers or subscribers discontinue doing business with a firm or service. It's also known as a client or customer loss. The telecommunications business is one area where turnover rates are particularly useful, because most customers have many options within a geographic location. Having a model that accurately identifies potential customers and the factors tha influence purchases  saves a huge amount of time and money in terms of marketing Michel et al. (2017). 
+
+#### The study seeks to address the following main research question; What are the most significant deteminants of the customer churn and customer retention?
+
+
+###Objectives of the study
+
+To perform appropriate data transformations that makes the data suitable for modelling and exploratory data procedures.
+To perform exploratory analysis  on the cunstomer churn dataset variables to indentify underlying relationships and patterns. 
+To determine which variables would be potential predictors of the customer churn outcome. 
+To fit a binary logistic regression model to the customer churn dataset to indentify the significant predictors and derive prediction model for the churn variable.
+
+###Part II: Method Justification
+
+1. The independence of errors, linearity in the logit for continuous variables, absence of multicollinearity, and lack of very impactful outliers are all basic assumptions for logistic regression.
+
+2. The binary logistic regression is used in analyzing the determinants of customer churn and developing  prediction model. The model is appropriate since the outcome variable, the churn outcome takes two values, "Yes" or "No", and the logistic regression parameters presents the likleihood of an event occuring is binary Hosmer et al (2013). Fitting the binary logistic regression model on the predcitors will present the realtive risk of belonging to a particular state, "yes or no" for the Telcom customers.
+
+```{r,echo=FALSE}
+## Importing packages
+library(tidyverse) 
+library(MASS)
+library(car)
+library(e1071)
+library(caret)
+library(cowplot)
+library(caTools)
+library(pROC)
+library(ggcorrplot)
+
+```
+```{r}
+##Importing the dataset
+churn_clean <- read.csv("F:\\Churn_clean.csv")
+
+
+```
+
+
+```{r}
+options(repr.plot.width = 6, repr.plot.height = 4)
+missing_data <- churn_clean %>% summarise_all(funs(sum(is.na(.))/n()))
+missing_data <- gather(missing_data, key = "variables", value = "percent_missing")
+ggplot(missing_data, aes(x = reorder(variables, percent_missing), y = percent_missing)) +
+geom_bar(stat = "identity", fill = "red", aes(color = I('white')), size = 0.3)+
+xlab('variables')+
+coord_flip()+ 
+theme_bw()
+
+```
+
+There are no missing instances in the  data. There are seven continuous variables and they are Population, Age, Tenure, Outage_sec_perweek, Email, Bandwidth_GB_Year and MonthlyCharges. 
+```{r}
+theme1 <- theme_bw()+
+theme(axis.text.x = element_text(angle = 0, hjust = 1, vjust = 0.5),legend.position="none")
+theme2 <- theme_bw()+
+theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),legend.position="none")
+```
+
+
+
+##Part III: DATA PREPARATION:
+
+The goal of data preparationis to  perform appropriate data transformations that makes the data suitable for modelling and exploratory data procedures.This step confirms that the variables can be used in analytic software with a certain visualization style (Ge et al., 2017). Variables like states,counties,  contract types and other categorical variables may be presented using bar graphs, stacked bar charts, and tree maps when they are translated to labels. Presenting data in a variety of visual representations emerges as a viable method for telling an audience a compelling tale about a data collection (Amani & Fadlalla, 2017). a data collection that is very engaging (Amani & Fadlalla, 2017).
+The data preparation procedures include the following; Cleaning the Categorical features by ensuring that they are coded appropriately.
+Standardising Continuous features and  Creating derived features. 
+Creating dummy variables for factor variables such as gender and payement method.
+The last preparation procdures include Creating the final dataset and partitioning  the data into train and validation set.
+
+```{r}
+num_columns <- c("Tenure", "MonthlyCharge", "Age","Population")
+churn_clean[num_columns] <- sapply(churn_clean[num_columns], as.numeric)
+
+churn_clean_int <- churn_clean[,c("Tenure", "MonthlyCharge", "Age","Population")]
+churn_clean_int <- data.frame(scale(churn_clean_int))
+```
+
+
+
+### Creating derived features
+
+Developing a derived feature from tenure, where different tenure bins (measured in months) are constructed, such as '0-1 year,"2-3 years,'3-4 years,' and so on.
+```{r}
+#max(churn_clean$tenure)
+#min(churn_clean$tenure)
+churn_clean <- mutate(churn_clean, Tenure_bin = Tenure)
+
+churn_clean$Tenure_bin[churn_clean$Tenure_bin >=0 & churn_clean$Tenure_bin <= 12] <- '0-1 year'
+churn_clean$Tenure_bin[churn_clean$Tenure_bin > 12 & churn_clean$Tenure_bin <= 24] <- '1-2 years'
+churn_clean$Tenure_bin[churn_clean$Tenure_bin > 24 & churn_clean$Tenure_bin <= 36] <- '2-3 years'
+churn_clean$Tenure_bin[churn_clean$Tenure_bin > 36 & churn_clean$Tenure_bin <= 48] <- '3-4 years'
+churn_clean$Tenure_bin[churn_clean$Tenure_bin > 48 & churn_clean$Tenure_bin <= 60] <- '4-5 years'
+churn_clean$Tenure_bin[churn_clean$Tenure_bin > 60 & churn_clean$Tenure_bin <= 72] <- '5-6 years'
+
+churn_clean$Tenure_bin <- as.factor(churn_clean$Tenure_bin)
+```
+```{r}
+options(repr.plot.width =6, repr.plot.height = 3)
+ggplot(churn_clean, aes(Tenure_bin, fill = Tenure_bin)) + geom_bar()+ theme1
+```
+After checking the distribution of data in with respect to lenghth of stay with the service provider, results show that  maximum number of customers have a tenure of either 0-1 years and followed by 5-6 years. The tenure of 2-3 years is the least represented. 
+```{r}
+churn_clean_cat <- churn_clean[,-c(1:11,13,14,16,17,21,22,42)]
+#Creating Dummy Variables
+dummy<- data.frame(sapply(churn_clean_cat,function(x) data.frame(model.matrix(~x-1,data =churn_clean_cat))[,-1]))
+
+head(dummy)
+```
+
+Creating the final dataset by combining the numeric and dummy data frames.Creating the final dataset by combining the numeric and dummy data frames.
+```{r}
+#Combining the data
+churn_clean_final <- cbind(churn_clean_int,dummy)
+head(churn_clean_final)
+
+```
+```{r}
+write.csv(churn_clean_final,'churn_clean_final.csv')
+```
+
+```{r}
+#summary(churn_clean[,20:40]
+```
+```
+
+
+##VISUALIZING THE CATEGORICAL VARIABLES OF THE DATA
+```{r,echo=FALSE}
+
+options(repr.plot.width = 6, repr.plot.height = 4)
+churn_clean %>% 
+group_by(Churn) %>% 
+summarise(Count = n())%>% 
+mutate(percent = prop.table(Count)*100)%>%
+ggplot(aes(reorder(Churn, -percent), percent), fill = Churn)+
+geom_col(fill = c("#FC4E07", "#E7B800"))+
+geom_text(aes(label = sprintf("%.2f%%", percent)), hjust = 0.01,vjust = -0.5, size =3)+ 
+theme_bw()+  
+xlab("Churn") + 
+ylab("Percent")+
+ggtitle("Churn Percent")
+```
+
+The CHURN column informs us how many customers have left in the last month. Within the last month, around 26% of customers abandoned the telecommunication services provider. 
+
+```{r}
+
+options(repr.plot.width = 12, repr.plot.height = 8)
+plot_grid(ggplot(churn_clean, aes(x=Gender,fill=Churn))+ geom_bar()+ theme1, 
+          ggplot(churn_clean, aes(x=OnlineSecurity,fill=Churn))+ geom_bar(position = 'fill')+theme1,
+          ggplot(churn_clean, aes(x=Children,fill=Churn))+ geom_bar(position = 'fill')+theme1,
+          ggplot(churn_clean, aes(x=Contract,fill=Churn))+ geom_bar(position = 'fill')+theme1,
+          ggplot(churn_clean, aes(x=Phone,fill=Churn))+ geom_bar(position = 'fill')+theme1,
+          ggplot(churn_clean, aes(x=Multiple,fill=Churn))+ geom_bar(position = 'fill')+theme_bw()+
+          scale_x_discrete(labels = function(x) str_wrap(x, width = 10)),
+          align = "h")
+```
+
+The churn rate among the male and female customers does not appear to varry significantly.
+The percent of churn is higher among those cleints with a months to month contract subscription. The individuals with multiple lines are associted with high rate of churn compared to those with only one line.
+
+```{r}
+options(repr.plot.width = 12, repr.plot.height = 8)
+plot_grid(ggplot(churn_clean, aes(x=TechSupport,fill=Churn))+ geom_bar()+ theme1, 
+          ggplot(churn_clean, aes(x=Port_modem,fill=Churn))+ geom_bar(position = 'fill')+theme1,
+          ggplot(churn_clean, aes(x=Tablet,fill=Churn))+ geom_bar(position = 'fill')+theme1,
+          ggplot(churn_clean, aes(x=InternetService,fill=Churn))+ geom_bar(position = 'fill')+theme1,
+          ggplot(churn_clean, aes(x=OnlineBackup,fill=Churn))+ geom_bar(position = 'fill')+theme1,
+          ggplot(churn_clean, aes(x=DeviceProtection,fill=Churn))+ geom_bar(position = 'fill')+theme_bw()+
+          scale_x_discrete(labels = function(x) str_wrap(x, width = 10)),
+          align = "h")
+
+```
+
+Churn rate is much higher in case of DSL InternetServices. Customers who  who do not have tech support, those who have online backup and those who have device protection  have left the platform in high numbers within the past month.
+
+
+```{r}
+options(repr.plot.width = 12, repr.plot.height = 8)
+plot_grid(ggplot(churn_clean, aes(x=StreamingTV,fill=Churn))+ geom_bar()+ theme1, 
+          ggplot(churn_clean, aes(x=StreamingMovies,fill=Churn))+ geom_bar(position = 'fill')+theme1,
+          ggplot(churn_clean, aes(x=PaperlessBilling,fill=Churn))+ geom_bar(position = 'fill')+theme1,
+          ggplot(churn_clean, aes(x=PaymentMethod,fill=Churn))+ geom_bar(position = 'fill')+theme_bw()+
+          scale_x_discrete(labels = function(x) str_wrap(x, width = 10)),
+          align = "h")
+```
+
+Higher rates of contract termination are observed among the customers who use the telocm services for streaming TV, movies. There are no pronounced differences among those who use paperless billing and those who do  not.  The payment method does appear to be pontential predictor for churn, given that individual using electronic checks are more likely to churn compared to their counterparts using other methods. 
+
+
+##Analyzing the continous variables
+
+```{r}
+options(repr.plot.width =6, repr.plot.height = 2)
+ggplot(churn_clean, aes(y= Tenure, x = "", fill = Churn)) + 
+geom_boxplot()+ 
+theme_bw()+
+xlab(" ")
+```
+The client who have opted out of the churn_cleanm company services have a median tenure of about 10 months while those who are still holding on have a median of 54 months. This an indication that a cunstomer who stayed long is more likely to stay even longer. 
+
+```{r}
+ggplot(churn_clean, aes(y= MonthlyCharge, x = "", fill = Churn)) + 
+geom_boxplot()+ 
+theme_bw()+
+xlab(" ")
+```
+There is a clearly visible difference between the median monthly charges for the customers who opted out of the program and those who did not opt out. The median charges for the lot that churned was in excess of $200 vs $160 for the other lot.  The results may indicate that high monthly charges is a predictor for churning of customers. 
+
+```{r}
+ggplot(churn_clean, aes(y= Population, x = "", fill = Churn)) + 
+geom_boxplot()+ 
+theme_bw()+
+xlab(" ")
+```
+There is not visible difference in the churn rate with respect to the population of the respective counties. 
+```{r}
+ggplot(churn_clean, aes(y= Age, x = "", fill = Churn)) + 
+geom_boxplot()+ 
+theme_bw()+
+xlab(" ")
+```
+Churn rate does not vary with respect to the median age.
+
+ 
+```{r}
+ggplot(churn_clean, aes(y= Outage_sec_perweek, x = "", fill = Churn)) + 
+geom_boxplot()+ 
+theme_bw()+
+xlab(" ")
+```
+How long the systems are down per week does not appear to influence churning rate among the customers.
+```{r}
+ggplot(churn_clean, aes(y= Income, x = "", fill = Churn)) + 
+geom_boxplot()+ 
+theme_bw()+
+xlab(" ")
+```
+
+
+```{r}
+options(repr.plot.width =4, repr.plot.height = 4)
+par(mfrow=c(1,2))
+boxplot(churn_clean$Tenure,main="Boxplot of tenure")$out
+boxplot(churn_clean$MonthlyCharge,main="Boxplot of Monthly charge")$out
+```
+
+
+```{r}
+#Splitting the data
+set.seed(76848)
+indices = sample.split(churn_clean_final$Churn, SplitRatio = 0.7)
+train = churn_clean_final[indices,]
+validation = churn_clean_final[!(indices),]
+```
+
+##Part IV: Model Comparison and Analysis
+
+###Logistic Regression
+
+The binary logistic regression is used in analyzing the determinants of customer churn and developing  prediction model. The model is appropriate since the outcome variable, the churn outcome takes two values, "Yes" or "No", and the logistic regression parameters presents the likleihood of an event occuring. Fitting the binary logistic regression model on the predcitors will present the realtive risk of belonging to a particular state, "yes or no" for the Telcom customers.
+
+\ln \frac{p_i}{1-p_i} = \beta_0 + \beta_1 x_{i1} + \beta_2 x_{i2} = \mathbf{x}_i \beta
+
+####Build the first model using all variables
+```{r}
+#Build the first model using all variables
+model_1 = glm(Churn ~ ., data = train, family = "binomial")
+summary(model_1)
+```
+
+Using stepAIC for variable selection, which is an iterative process of adding and eliminating variables to find the best performing subset of variables. AIC is a tool for selecting models. The AIC is only a comparison of multiple models. The adjusted R-squared is similar to the AIC in that it penalizes adding more variables to the model Ruengvirayudh & Brooks (2016).
+
+```{r, results = "hide"}
+model_2<- stepAIC(model_1, direction="both")
+```
+```{r}
+summary(model_2)
+```
+The variance inflation factor (vif) is applied to eliminate redundant predictors with significant multicollinearity.
+
+The Variance Inflation Factor (VIF) is a metric for determining how multicollinear predictor variables are in a model. A predictor with a VIF of 2 or less is generally deemed safe, as it is unlikely to be associated with other predictor variables. However, Predictors with a high VIF may have a high p-value (or be highly significant), therefore we must examine the Predictor variable's importance before deleting it from our model.
+
+```{r}
+vif(model_2)
+```
+
+```{r}
+#Removing paperless Billing  due to high p-value  and montlhy charge due to high VIF
+model_3 <-glm(formula = Churn ~ Tenure  + Marital.xMarried  +  Marital.xSeparated + Marital.xWidowed +Gender.xMale + Techie  +  Contract.xOne.year +  Contract.xTwo.Year + InternetService.xFiber.Optic + InternetService.xNone  + Contract.xOne.year + Contract.xTwo.Year +  Multiple  +OnlineSecurity+ StreamingTV + StreamingMovies +  PaymentMethod.xElectronic.Check+  PaymentMethod.xMailed.Check, family = "binomial", data = train)
+summary(model_3)
+```
+```{r}
+vif(model_3)
+
+```
+###Presenting paramters in terms of odds ratios
+
+```{r}
+exp(cbind(OR=coef(model_3), confint(model_3)))
+```
+
+
+#Part V: Data Summary and Implications
+
+Model_3 all has significant variables, it can therefore be used for prediction.  The follwing factors are are likely to reduce the chances of customer churn; tenure has an odds ratio of 0.05961  implies that a unit increase in tenure is associated with 0.059 likelihood of a customer leaving the telcom, those with longer tenure are more likely to stay.  Bieng married, seperated or widowed is associated with hihger tendencies of churn.  The male clients are on average 1.2 times more likely to opt out the progran compared to the females. Individuals who are tech savy have higher tendancies of churn by up to 2.9 times.  Having a one year or two year contract reduces ones chances of churning unlike those clients with month to month subscription contracts  who are up to 3 times disposed to churning. InternetService.xFiber.Optic and no internet service cleints are more loyal than those with the DSL as their internet service provider.  Having multiple service provider is a risk factor high likelihood for churn and those without online security stay longer on avergae than those with it.  StreamingTV and StreamingMovies  are all variables that are associated with high churn rate among the tecom customers by up to 18 and 31 times respectively.
+
+ The resulting equation is represent as follows;
+ Some of the major limitations of the logistic regression model is that the adequacy of  parameters is highly limited by multicollinearity within the variables. 
+
+
+
+
+```{r}
+final_model <- model_3
+pred <- predict(final_model, type = "response", newdata = validation[,-24])
+summary(pred)
+validation$prob <- pred
+
+# Using probability cutoff of 50%.
+
+pred_churn <- factor(ifelse(pred >= 0.50, "Yes", "No"))
+actual_churn <- factor(ifelse(validation$Churn==1,"Yes","No"))
+table(actual_churn,pred_churn)
+```
+
+```{r}
+cutoff_churn <- factor(ifelse(pred >=0.50, "Yes", "No"))
+conf_final <- confusionMatrix(cutoff_churn, actual_churn, positive = "Yes")
+accuracy <- conf_final$overall[1]
+sensitivity <- conf_final$byClass[1]
+specificity <- conf_final$byClass[2]
+accuracy
+sensitivity
+specificity
+```
+When we are using a cutoff of 0.50, the accuracy and precison meaures are quite satisfactory, the accuracy of 89.43% is quite impressive. The sensitivity and senistivity are also good. 50% is already giving realiable prediction performance but this could be improved by choosing the cut-offs iteratively to derive the maximum accuracy, sensitivity and specificity. 
+```{r,echo=FALSE}
+perform_fn <- function(cutoff) 
+{
+  predicted_churn <- factor(ifelse(pred >= cutoff, "Yes", "No"))
+  conf <- confusionMatrix(predicted_churn, actual_churn, positive = "Yes")
+  accuray <- conf$overall[1]
+  sensitivity <- conf$byClass[1]
+  specificity <- conf$byClass[2]
+  out <- t(as.matrix(c(sensitivity, specificity, accuray))) 
+  colnames(out) <- c("sensitivity", "specificity", "accuracy")
+  return(out)
+}
+```
+```{r,echo=FALSE}
+options(repr.plot.width =8, repr.plot.height =6)
+summary(pred)
+s = seq(0.01,0.80,length=100)
+OUT = matrix(0,100,3)
+
+for(i in 1:100)
+{
+  OUT[i,] = perform_fn(s[i])
+} 
+
+plot(s, OUT[,1],xlab="Cutoff",ylab="Value",cex.lab=1.5,cex.axis=1.5,ylim=c(0,1),
+     type="l",lwd=2,axes=FALSE,col=2)
+axis(1,seq(0,1,length=5),seq(0,1,length=5),cex.lab=1.5)
+axis(2,seq(0,1,length=5),seq(0,1,length=5),cex.lab=1.5)
+lines(s,OUT[,2],col="darkgreen",lwd=2)
+lines(s,OUT[,3],col=4,lwd=2)
+box()
+legend("bottom",col=c(2,"darkgreen",4,"darkred"),text.font =3,inset = 0.02,
+       box.lty=0,cex = 0.8, 
+       lwd=c(2,2,2,2),c("Sensitivity","Specificity","Accuracy"))
+abline(v = 0.32, col="red", lwd=1, lty=2)
+axis(1, at = seq(0.1, 1, by = 0.1))
+
+```
+Choosing  a cutoff value of 0.32 for final model, a point where the three curves for accuracy, specificty and sensitivity coincide.
+```{r}
+cutoff_churn <- factor(ifelse(pred >=0.32, "Yes", "No"))
+conf_final <- confusionMatrix(cutoff_churn, actual_churn, positive = "Yes")
+accuracy <- conf_final$overall[1]
+sensitivity <- conf_final$byClass[1]
+specificity <- conf_final$byClass[2]
+accuracy
+sensitivity
+specificity
+```
+
+####References
+Hosmer Jr, D. W., Lemeshow, S., & Sturdivant, R. X. (2013). Applied logistic regression (Vol. 398). John Wiley & Sons.
+Michel, R., Schnakenburg, I., & von Martens, T. (2017). Effective customer selection for marketing campaigns based on net scores. Journal of Research in Interactive Marketing.
+Sarkar, D. (2008). Lattice: multivariate data visualization with R. Springer Science & Business Media.
+Ge, Z., Song, Z., Ding, S. X., & Huang, B. (2017). Data mining and analytics in the process industry: The role of machine learning. Ieee Access, 5, 20590-20616.
+Amani, F. A., & Fadlalla, A. M. (2017). Data mining applications in accounting: A review of the literature and organizing framework. International Journal of Accounting Information Systems, 24, 32-58.
+Ruengvirayudh, P., & Brooks, G. P. (2016). Comparing stepwise regression models to the best-subsets models, or, the art of stepwise. General linear model journal, 42(1), 1-14.
+

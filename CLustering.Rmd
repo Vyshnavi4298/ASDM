@@ -1,0 +1,274 @@
+---
+title: "Clustering"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r}
+library(broom)
+library(plyr)
+library(dplyr)
+library(randomForest)
+library(rpart)
+library(rpart.plot)
+library(caret)
+library(ggplot2)
+library(gridExtra)
+library(readr)
+library(corrplot)
+library(factoextra)
+library(kableExtra)
+```
+
+
+### CLUSTERING 
+
+```{r}
+##Importing the dataset
+churn_clean <- read.csv("F:\\Churn_clean.csv");churn_clean
+
+
+```
+```{r}
+attach(churn_clean[,15:25])
+```
+```{r}
+churn_clean <- churn_clean %>% dplyr::select(!"Customer_id")
+```
+
+
+
+
+```{r}
+
+churn_1=churn_clean %>% dplyr::select("Gender","Tenure","Age","Multiple","InternetService","OnlineSecurity", "OnlineBackup", "DeviceProtection","TechSupport","StreamingTV","StreamingMovies","Tablet","Contract", "PaymentMethod","PaperlessBilling", "MonthlyCharge","Phone", "Churn")
+churn_1
+na.omit(churn_1)
+                       
+```
+
+
+
+```{r}
+churn_1$Multiple <- as.factor(churn_1$Multiple)
+
+churn_1$InternetService <- as.factor(churn_1$InternetService)
+churn_1$OnlineSecurity <- as.factor(churn_1$OnlineSecurity)
+churn_1$OnlineBackup <- as.factor(churn_1$OnlineBackup)
+churn_1$DeviceProtection <- as.factor(churn_1$DeviceProtection)
+churn_1$TechSupport <- as.factor(churn_1$TechSupport)
+churn_1$StreamingTV <- as.factor(churn_1$StreamingTV)
+churn_1$StreamingMovies <- as.factor(churn_1$StreamingMovies)
+
+churn_1$PaperlessBilling <- as.factor(churn_1$PaperlessBilling)
+
+#churn_1$Tablet <- as.factor(churn_1$Tablet)
+
+churn_1$Phone <- as.factor(churn_1$Phone)
+
+
+
+#churn_1$Tablet=revalue(churn_1$Tablet,c("No phone service"=0, "No" = 0, "Yes"=1))
+churn_1$Phone=revalue(churn_1$Phone,c("No phone service"=0, "No" = 0, "Yes"=1))
+churn_1$PaperlessBilling=revalue(churn_1$PaperlessBilling,c("No phone service"=0, "No" = 0, "Yes"=1))
+churn_1$Multiple <- revalue(churn_1$Multiple, c("No phone service"=0, "No" = 1, "Yes"=2))
+churn_1$InternetService <- revalue(churn_1$InternetService, c("No"=0, "Fiber optic" = 2, "DSL"=1))
+churn_1$OnlineSecurity <- revalue(churn_1$OnlineSecurity, c("No internet service"="0", "No" = "0", "Yes"="1"))
+churn_1$OnlineBackup <- revalue(churn_1$OnlineBackup, c("No internet service"="0", "No" = "0", "Yes"="1"))
+churn_1$DeviceProtection <- revalue(churn_1$DeviceProtection, c("No internet service"="0", "No" = "0", "Yes"="1"))
+churn_1$TechSupport <- revalue(churn_1$TechSupport, c("No internet service"="0", "No" = "0", "Yes"="1"))
+churn_1$StreamingTV <- revalue(churn_1$StreamingTV, c("No internet service"="0", "No" = "0", "Yes"="1"))
+churn_1$StreamingMovies <- revalue(churn_1$StreamingMovies, c("No internet service"="0", "No" = "0", "Yes"="1"))
+
+```
+  
+```{r}
+
+#churn_1$Multiple <- revalue(churn_1$Multiple, c("No" = 1, "Yes"=2))
+#churn_1$InternetService <- revalue(churn_1$InternetService, c("No"=0, "Fiber optic" = 2, "DSL"=1))
+#churn_1$OnlineSecurity <- revalue(churn_1$OnlineSecurity, c("No" = "0", "Yes"="1"))
+#churn_1$OnlineBackup <- revalue(churn_1$OnlineBackup, c(No"=0,"Yes"=1))
+#churn_1$DeviceProtection <- revalue(churn_1$DeviceProtection, c("No" = 1, "Yes"=1))
+#churn_1$TechSupport <- revalue(churn_1$TechSupport, c( "No"=0,"Yes"=1))
+#churn_1$StreamingTV <- revalue(churn_1$StreamingTV, c( "No" = 0, "Yes"=1))
+#churn_1$StreamingMovies <- revalue(churn_1$StreamingMovies, c("No" =0, "Yes"=1))
+
+churn_1$Multiple = as.numeric(as.character(churn_1$Multiple))
+churn_1$PaperlessBilling = as.numeric(as.character(churn_1$PaperlessBilling))
+churn_1$InternetService = as.numeric(as.character(churn_1$InternetService))
+churn_1$OnlineSecurity = as.numeric(as.character(churn_1$OnlineSecurity))
+churn_1$OnlineBackup = as.numeric(as.character(churn_1$OnlineBackup))
+churn_1$DeviceProtection = as.numeric(as.character(churn_1$DeviceProtection))
+churn_1$TechSupport = as.numeric(as.character(churn_1$TechSupport))
+churn_1$StreamingTV = as.numeric(as.character(churn_1$StreamingTV))
+churn_1$StreamingMovies = as.numeric(as.character(churn_1$StreamingMovies))
+#churn_1$Phone = as.numeric(as.character(churn_1$Phone))
+#churn_1$Tablet = as.numeric(as.character(churn_1$Tablet))
+
+```
+
+
+
+
+
+```{r}
+na.omit(churn_1)
+
+```
+
+```{r}
+#Sum and standartization
+colnms = c("Multiple", 
+           "OnlineSecurity", "OnlineBackup", "DeviceProtection", "PaperlessBilling","TechSupport", "StreamingTV", 
+           "StreamingMovies")
+churn_1$service_score <- rowSums(churn_1[ ,colnms])
+
+#Standardization function 
+mean_sd_standard <- function(x) {
+  (x - mean(x)) / sd(x)
+}
+
+df_standardized <- churn_1 %>%
+  mutate_if(is.numeric, mean_sd_standard)
+
+```
+
+
+
+
+```{r}
+df1_stand <- select(df_standardized, c("Tenure", "MonthlyCharge", "service_score"))
+
+fviz_nbclust(df1_stand, kmeans, method = "silhouette", k.max = 24) + 
+  theme_minimal() + 
+  ggtitle("The Silhouette Plot")
+```
+
+
+```{r}
+clusters <- kmeans(df1_stand, centers = 4)
+churn_1$cluster <- factor(clusters$cluster);clusters
+```
+```{r}
+churn_1 %>% dplyr::select("Tenure", "MonthlyCharge", "service_score", "cluster") %>% group_by(cluster) %>% summarize_if(is.numeric, mean)
+```
+
+```{r}
+ggplot(churn_1, aes(x = cluster)) + geom_bar(fill = "#00bfff") +
+  xlab("clusters") +
+  ggtitle("What is the clusters size?") +
+  ylab("number of consumers") +
+  theme_classic()+scale_y_continuous(expand = c(0,0))
+```
+
+
+```{r}
+churn_1$cluster <- gsub("1", "High - High", churn_1$cluster)
+churn_1$cluster <- gsub("2", "Medium - High", churn_1$cluster)
+churn_1$cluster <- gsub("3", "Low - Low", churn_1$cluster)
+churn_1$cluster <- gsub("4", "Very Low - Low", churn_1$cluster)
+
+ggplot(data = churn_1, aes(x = cluster))+
+  geom_bar(aes(fill = Churn), position = "dodge", alpha = 0.6) +
+    scale_fill_manual(values = c(
+    "No" = "#14b542", 
+    "Yes" = "#b50e05")) +
+   theme(panel.background = element_blank(),
+        plot.title = element_text(color = "#045e2c")) +
+   labs(title = "Churn in clusters", 
+       x = "Cluster", 
+       y = "Clients")+scale_y_continuous(expand = c(0,0))
+
+
+
+
+```
+
+###Churn prediction for the cluster ?Medium - High?
+
+```{r}
+cluster2 <- filter(churn_1, churn_1$cluster == "Medium - High" )
+
+ch2 <- cluster2 %>% 
+  dplyr::group_by(Churn) %>% 
+  dplyr::summarise(n = n()) %>% 
+  mutate(rate = paste0(round(100 * n/sum(n), 0), "%")) %>% 
+  arrange(-n)
+
+
+#resulting table
+ch2 %>%
+  kbl() %>%
+  kable_material(c("striped", "hover"))
+```
+```{r}
+#Regression model
+cluster2$Churn <- as.factor(cluster2$Churn)
+cluster2_model <- select(cluster2, c("Gender", "Tenure", "service_score", "Contract", "PaymentMethod","PaperlessBilling", "MonthlyCharge", "Churn"))
+
+cluster2_model$Churn <- as.factor(cluster2_model$Churn)
+cluster2_model$gender <- as.factor(cluster2_model$Gender)
+cluster2_model$Contract <- as.factor(cluster2_model$Contract)
+cluster2_model$PaymentMethod <- as.factor(cluster2_model$PaymentMethod)
+cluster2_model$PaperlessBilling <- as.factor(cluster2_model$PaperlessBilling)
+
+
+m1 <- glm(Churn ~., family = binomial, cluster2_model)
+summary(m1)
+
+#library(sjPlot)
+#tab_model(m1)
+```
+```{r}
+cluster1 <- filter(churn_1, churn_1$cluster == "High - High" )
+
+ch3 <- cluster1 %>% 
+  group_by(Churn) %>% 
+  dplyr::summarise(n = n()) %>% 
+  mutate(rate = paste0(round(100 * n/sum(n), 0), "%")) %>% 
+  arrange(-n)
+
+#resulting table
+ch3 %>%
+  kbl() %>%
+  kable_material(c("striped", "hover"))
+```
+
+
+```{r}
+
+#plot(rules_N, method = "scatterplot", measure = c("support","confidence"), #shading = c("lift"))
+```
+
+```{r}
+#plot(rules_N[1:10], method = "grouped", measure = "confidence")
+```
+
+```{r}
+
+#set.seed(123)
+#plot(rules_N[1:10], method = "graph", cex = 0.7)
+```
+```{r}
+#plot(rules_N[1:10], method = "graph", cex = 0.7, control = #list(layout=igraph::in_circle()))
+```
+```{r}
+#plot(rules_N[1:10], method = "paracoord", measure = "confidence", lty = "dotted")
+```
+
+```{r}
+#plot(rules_Y, method = "grouped", measure = "confidence")
+```
+
+```{r}
+#set.seed(987)
+#plot(rules_Y, method = "graph", cex = 0.7)
+```
+```{r}
+#plot(rules_Y, method = "graph", cex = 0.7, control = #list(layout=igraph::in_circle()))
+```
+

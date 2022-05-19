@@ -1,0 +1,125 @@
+---
+title: "Association Rules"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+##Importing the data set
+churn_clean <- read.csv("F:\\Churn_clean.csv");head(churn_clean)
+#data <-read.csv("https://github.com/nchelaru/data-prep/raw/master/telco_cleaned_yes_no.csv");data
+```
+
+```{r}
+churn_subset <- churn_clean[,c(19,20,26,37,41,40)];head(churn_subset)
+```
+
+##Data preparation
+
+```{r}
+any(is.na(churn_subset))
+```
+
+```{r}
+hist(churn_subset$Tenure, breaks = seq(0,72), col = "blue")
+```
+
+```{r}
+churn_subset$Tenure <- as.factor(ifelse(churn_subset$Tenure <= 1, "1",
+                         ifelse(churn_subset$Tenure <= 6, "(1,6]",
+                         ifelse(churn_subset$Tenure <= 12, "(6,12]",
+                         ifelse(churn_subset$Tenure <= 24, "(12,24]",
+                         ifelse(churn_subset$Tenure <= 48, "(24,48]",
+                         ifelse(churn_subset$Tenure <= 60, "(48,60]", "(60,72]")))))))
+```
+
+##Monthly charges
+
+```{r}
+quantile(churn_subset$MonthlyCharge)
+```
+
+```{r}
+library(arules)
+library(arulesViz)
+```
+
+```{r}
+rules_all <- apriori(churn_subset)
+```
+
+```{r}
+rules_N_all <- apriori(churn_subset, control = list(verbose=F), parameter = list(supp = 0.01, conf = 0.89), appearance = list(rhs=c("Churn=No")))
+
+rules_N_all
+```
+
+```{r}
+quality(rules_N_all) <- round(quality(rules_N_all), digits = 4)
+rules_N_all <- sort(rules_N_all, by = "confidence")
+
+inspectDT(rules_N_all)
+```
+```{r}
+subsets_N <- is.subset(rules_N_all, rules_N_all)
+subsets_N[lower.tri(subsets_N, diag = T)] <- F
+redundant_N <- (colSums(subsets_N) >= 1)
+# removing redundant rules
+rules_N <- rules_N_all[!redundant_N]
+```
+I check whether all obtained rules are significant.
+```{r}
+all(is.significant(rules_N, data))
+```
+```{r}
+rules_N
+```
+```{r}
+inspectDT(rules_N)
+```
+```{r}
+rules_N <- sort(rules_N, by = "support")
+inspectDT(rules_N)
+```
+
+```{r}
+rules_Y_all <- apriori(churn_subset, control = list(verbose=F), parameter = list(supp = 0.005, conf = 0.80), appearance = list(rhs=c("Churn=Yes")))
+
+rules_Y_all
+```
+```{r}
+quality(rules_Y_all) <- round(quality(rules_Y_all), digits = 4)
+
+rules_Y_all <- sort(rules_Y_all, by = "confidence")
+
+inspectDT(rules_Y_all)
+```
+
+#Redundant rules checking
+```{r}
+subsets_Y <- is.subset(rules_Y_all, rules_Y_all)
+subsets_Y[lower.tri(subsets_Y, diag = T)] <- F
+redundant_Y <- (colSums(subsets_Y) >= 1)
+
+# removing redundant rules
+rules_Y <- rules_Y_all[!redundant_Y]
+```
+```{r}
+all(is.significant(rules_Y, data))
+```
+```{r}
+rules_Y
+```
+```{r}
+inspectDT(rules_Y)
+```
+
+```{r}
+
+```
+

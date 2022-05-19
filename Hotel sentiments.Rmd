@@ -1,0 +1,234 @@
+---
+title: "Untitled"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r}
+library(dplyr)
+library(tidytext)
+library(stringr)
+library(tidyverse)
+library(NLP)
+library(stringi)
+library(topicmodels)
+library(twitteR)
+library(ROAuth)
+require(RCurl)
+library(tm)
+library
+library(plyr)
+library(dplyr)
+library(wordcloud)
+library(SnowballC)
+library(syuzhet)
+library(readr)
+library(ggplot2)
+
+
+```
+```{r}
+hotel_data=read.csv("F:\\UK411#23112#4 tourist_accommodation_reviews.csv");hotel_data
+```
+
+
+```{r}
+library(epiDisplay)
+
+tab1(hotel_data$Location,sort.group = "decreasing",cum.percent = TRUE)
+#tab
+```
+```{r}
+hotel_review=hotel_data %>% dplyr::select(Review);hotel_review
+```
+
+```{r}
+
+head(hotel_data$Review)
+str(hotel_data$Review)
+
+
+
+##data cleaning 
+hotel_data= as.data.frame(hotel_data);head(hotel_data)
+
+
+#Hotel review text
+hotel_text=hotel_data$Review;hotel_text
+
+library(tm)
+#hotel_text<- tm_map(hotel_text, removeWords, stopwords("english"))
+
+# Replace blank space (ârtâ)
+hotel_text<-gsub("rt", "", hotel_text)
+
+# Replace @UserName
+
+hotel_text<-gsub("@\\w+", "", hotel_text)
+
+
+# Remove punctuation
+
+
+hotel_text<-gsub("[[:punct:]]", "", hotel_text)
+
+# Remove links
+
+hotel_text<-gsub("http\\w+", "", hotel_text)
+
+
+# Remove tabs
+
+hotel_text<-gsub("[ |\t]{2,}", "", hotel_text)
+
+
+# Remove blank spaces at the beginning
+
+
+hotel_text<-gsub("^ ", "", hotel_text)
+
+# Remove blank spaces at the end
+
+hotel_text<-gsub(" $", "", hotel_text)
+
+```
+```{r}
+##data cleaning 
+hotel_data= as.data.frame(hotel_data);hotel_data
+hotel_text <- Corpus(VectorSource(hotel_data$Review))
+removeURL <- function(x) gsub("http[^[:space:]]*", "", x)
+hotel_text <- tm_map(hotel_text , content_transformer(removeURL)) 
+removeNumPunct <- function(x) gsub("[^[:alpha:][:space:]]*", "", x)
+hotel_text  <- tm_map(hotel_text , content_transformer(removeNumPunct))
+hotel_text  <- tm_map(hotel_text , stripWhitespace)
+hotel_text<-gsub("[[:punct:]]","" ,hotel_text)
+hotel_text<-gsub('\"', "", hotel_text, fixed = TRUE)
+
+for(j in seq(hotel_text))      {     
+  hotel_text[[j]] <- gsub("/", "", hotel_text[[j]])     
+  hotel_text[[j]] <- gsub("@", "", hotel_text[[j]])    
+  hotel_text[[j]] <- gsub( "\\|", "", hotel_text[[j]])
+  hotel_text[[j]] <- gsub( "äªç'", "", hotel_text[[j]])
+}
+
+#convert all text to lower case
+hotel_text<-tolower(hotel_text)
+
+```
+```{r}
+#####################################################################################################
+hotel_text <- Corpus(VectorSource(hotel_text))
+
+
+#creating term document matrix
+wordFreq <- function(corpus, word) {
+ results <- lapply(corpus,
+                    function(x) { grep(as.character(x), pattern=paste0("\\<",word)) }
+  )
+ sum(unlist(results))
+}
+
+tdm <- TermDocumentMatrix(hotel_text,control = list(wordLengths = c(1, Inf)))
+
+
+(freq.terms <- findFreqTerms(tdm, lowfreq = 2000))
+
+```
+```{r}
+############### Removing stop words
+myStopwords <- c(setdiff(stopwords('english'), c("r", "big")),"and","i","i","when","you","im","your",  "what", "to", "this","the","that","so","of","it","is","in","at","a","be","by","for","have","on","our","are","i","will","with","you","also","dont","bit","much","got","didnt")
+myStopwords
+hotel_text<- tm_map(hotel_text,removeWords, myStopwords)
+#clean up by removing stop words
+hotel_text.corpus <- tm_map(hotel_text, function(x)removeWords(x,stopwords()))
+```
+```{r}
+
+library(wordcloud)
+wordcloud(hotel_text,max.words =70,min.freq=3,scale=c(4,.5),colors=palette())
+```
+```{r}
+#####
+hotel_text<-tm_map(hotel_text, function(x)removeWords(x,stopwords()))
+########
+hotel_text <- TermDocumentMatrix(hotel_text,control = list(wordLengths = c(1, Inf)))
+#hotel_text
+```
+```{r}
+(freq.terms <- findFreqTerms(hotel_text, lowfreq = 5000))
+#plot of most frequent words
+term.freq <- rowSums(as.matrix(hotel_text))
+term.freq <- subset(term.freq, term.freq >= 5000)
+df2 <- data.frame(term = names(term.freq), freq = term.freq)
+ggplot(df2, aes(x=term, y=freq)) + geom_bar(stat="identity") +xlab("Terms") + ylab("Count") + coord_flip() +theme(axis.text=element_text(size=7))
+
+
+```
+```{r}
+# Afinn dictionary:  assigns scores to words, positive scores, positive words and negative scores for negative words
+library(textdata)
+get_sentiments("afinn") %>% 
+  summarize(
+min = min(value),
+max = max(value)
+)
+```
+
+```{r}
+sentiment_counts <- get_sentiments("loughran") %>%
+              count(sentiment) %>%
+              mutate(sentiment2 = fct_reorder(sentiment, n))
+
+
+ggplot(sentiment_counts, aes(x = sentiment2, y = n)) +
+      geom_col() +
+      coord_flip() +
+      labs(
+      title = "Sentiment Counts in Loughran",
+      x = "Counts",
+      y = "Sentiment"
+)
+```
+
+```{r}
+library(tm)
+library(syuzhet)
+#create corpus
+```{r}
+
+```
+
+hotel_text.corpus <- Corpus(VectorSource(hotel_text));head(hotel_text.corpus)
+
+#getting emotions using in-built function
+get_nrc_sentiment(as.character(hotel_text), cl = NULL, language = "english", lowercase = TRUE)
+
+```
+
+```{r}
+hotel_text=as.character(hotel_text)
+mysentiment_hotel_text<-get_nrc_sentiment((hotel_text));head(mysentiment_hotel_text)
+
+```
+
+```{r}
+#calculating total score for each sentiment
+
+Sentimentscores_hotel_text<-data.frame(colSums(mysentiment_hotel_text[,]));Sentimentscores_hotel_text
+
+```
+
+```
+```{r}
+#plotting the sentiments with scores
+ggplot(data=Sentimentscores_hotel_text,aes(x=sentiment,y=Score))+geom_bar(aes(fill=sentiment),stat = "identity")+
+  theme(legend.position="none")+
+  xlab("Sentiments")+ylab("scores")+ggtitle("Sentiments of people behind the tweets from training dataset")
+
+
+```
+```{r}
